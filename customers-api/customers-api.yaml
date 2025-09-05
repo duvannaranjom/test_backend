@@ -1,0 +1,317 @@
+openapi: 3.0.3
+info:
+  title: Customers API
+  version: "1.0.0"
+  description: |
+    API para gestión de clientes (alta, consulta, actualización y borrado).
+    Entorno local por defecto: `http://localhost:3001`.
+servers:
+  - url: http://localhost:3001
+    description: Desarrollo local
+tags:
+  - name: Health
+  - name: Customers
+paths:
+  /V1/health:
+    get:
+      tags: [Health]
+      summary: Verifica el estado del servicio
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+  /V1/customers:
+    get:
+      tags: [Customers]
+      summary: Listar clientes
+      description: Lista clientes con búsqueda y paginación por cursor (id).
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+            maxLength: 120
+          description: Texto para buscar por name/email/phone
+        - in: query
+          name: cursor
+          schema:
+            type: integer
+            minimum: 1
+          description: Cursor (id) para paginación (id > cursor)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Número máximo de resultados
+      responses:
+        '200':
+          description: Página de resultados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomersPage'
+              examples:
+                ejemplo:
+                  value:
+                    items:
+                      - id: 1
+                        name: Ada Lovelace
+                        email: ada@example.com
+                        phone: "3001111111"
+                        created_at: "2025-09-05T12:34:56Z"
+                    nextCursor: 10
+    post:
+      tags: [Customers]
+      summary: Crear cliente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreateRequest'
+            examples:
+              ejemplo:
+                value:
+                  name: Ada Lovelace
+                  email: ada@example.com
+                  phone: "3001111111"
+      responses:
+        '201':
+          description: Cliente creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Petición inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email duplicado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /V1/customers/{id}:
+    get:
+      tags: [Customers]
+      summary: Obtener cliente por id
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: Cliente encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: No existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags: [Customers]
+      summary: Actualizar cliente
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerUpdateRequest'
+            examples:
+              ejemplo:
+                value:
+                  name: Ada L.
+                  phone: "3010000000"
+      responses:
+        '200':
+          description: Cliente actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: No existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email duplicado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Customers]
+      summary: Eliminar cliente
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '204':
+          description: Eliminado
+        '404':
+          description: No existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /V1/internal/customers/{id}:
+    get:
+      tags: [Customers]
+      summary: Obtener cliente para uso interno (Orders/Orchestrator)
+      description: |
+        Requiere header `Authorization: Bearer <SERVICE_TOKEN>`
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/CustomerId'
+      responses:
+        '200':
+          description: Cliente (vista interna)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, email]
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: Ada Lovelace
+                  email:
+                    type: string
+                    format: email
+                    example: ada@example.com
+                  phone:
+                    type: string
+                    nullable: true
+                    example: "3001111111"
+        '401':
+          description: Falta token bearer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  parameters:
+    CustomerId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Identificador del cliente
+  schemas:
+    Customer:
+      type: object
+      required: [id, name, email, created_at]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Ada Lovelace
+        email:
+          type: string
+          format: email
+          example: ada@example.com
+        phone:
+          type: string
+          nullable: true
+          example: "3001111111"
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-09-05T12:34:56Z"
+    CustomersPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Customer'
+        nextCursor:
+          type: integer
+          nullable: true
+          example: 10
+    CustomerCreateRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          example: Ada Lovelace
+        email:
+          type: string
+          format: email
+          example: ada@example.com
+        phone:
+          type: string
+          nullable: true
+          example: "3001111111"
+    CustomerUpdateRequest:
+      type: object
+      description: Debe contener al menos un campo
+      properties:
+        name:
+          type: string
+          example: Ada L.
+        email:
+          type: string
+          format: email
+          example: ada.l@example.com
+        phone:
+          type: string
+          nullable: true
+          example: "3010000000"
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Validation error
+        code:
+          type: string
+          example: UNPROCESSABLE
+        details:
+          nullable: true
+          description: Datos adicionales del error

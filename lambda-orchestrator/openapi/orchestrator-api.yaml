@@ -1,0 +1,52 @@
+service: lambda-orchestrator
+frameworkVersion: "4"
+useDotenv: true  # carga .env en offline/deploy
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 10
+  logRetentionInDays: 7
+  environment:
+    # Bases de los microservicios (con defaults para local)
+    CUSTOMERS_API_BASE: ${env:CUSTOMERS_API_BASE, 'http://localhost:3001'}
+    ORDERS_API_BASE: ${env:ORDERS_API_BASE, 'http://localhost:3002'}
+    # Seguridad interna
+    SERVICE_TOKEN: ${env:SERVICE_TOKEN}
+    # Timeouts / Retries del orquestador
+    REQUEST_TIMEOUT_MS: ${env:REQUEST_TIMEOUT_MS, '2000'}
+    RETRY_MAX_ATTEMPTS: ${env:RETRY_MAX_ATTEMPTS, '2'}
+    RETRY_BASE_MS: ${env:RETRY_BASE_MS, '200'}
+    # Logs
+    LOG_LEVEL: ${env:LOG_LEVEL, 'info'}
+
+functions:
+  orchestrate:
+    handler: src/handler.handler
+    events:
+      - httpApi:
+          path: /orchestrator/create-and-confirm-order
+          method: POST
+          cors: true
+    # Para invocaciones vía API, evita reintentos automáticos de Lambda (no aplica a httpApi normalmente, pero lo dejamos explícito)
+    maximumRetryAttempts: 0
+
+plugins:
+  - serverless-offline
+
+custom:
+  serverless-offline:
+    httpPort: 3003
+    noPrependStageInUrl: true
+    reloadHandler: true
+
+package:
+  patterns:
+    - "src/**"
+    - "openapi/**"
+    - "package.json"
+    - "package-lock.json"
+    - "!node_modules/**"

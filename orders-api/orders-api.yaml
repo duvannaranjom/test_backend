@@ -1,0 +1,299 @@
+openapi: 3.0.3
+info:
+  title: Orders API
+  version: "1.0.0"
+  description: |
+    API para gestión de órdenes (creación, consulta, confirmación idempotente y cancelación).
+    Entorno local por defecto: `http://localhost:3002`.
+servers:
+  - url: http://localhost:3002
+    description: Desarrollo local
+tags:
+  - name: Health
+  - name: Orders
+paths:
+  /V1/health:
+    get:
+      tags: [Health]
+      summary: Verifica el estado del servicio
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+  /V1/orders:
+    get:
+      tags: [Orders]
+      summary: Listar órdenes
+      description: Lista órdenes con filtros opcionales y paginación por cursor.
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+          description: Filtra por estado
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+          description: Fecha inicial (ISO8601) para filtrar por created_at
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+          description: Fecha final (ISO8601) para filtrar por created_at
+        - in: query
+          name: cursor
+          schema:
+            type: integer
+            minimum: 1
+          description: Cursor (id) para paginación (id > cursor)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Número máximo de resultados
+      responses:
+        '200':
+          description: Página de resultados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersPage'
+              examples:
+                ejemplo:
+                  value:
+                    items:
+                      - id: 1
+                        customer_id: 1
+                        status: CONFIRMED
+                        total_cents: 35000
+                        created_at: "2025-09-05T12:34:56Z"
+                    nextCursor: 10
+    post:
+      tags: [Orders]
+      summary: Crear una orden
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+            examples:
+              ejemplo:
+                value:
+                  customer_id: 1
+                  items:
+                    - product_id: 1
+                      qty: 2
+                    - product_id: 3
+                      qty: 1
+      responses:
+        '201':
+          description: Orden creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Petición inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflicto (stock insuficiente, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /V1/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Obtener una orden por id
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Orden encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404':
+          description: No existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /V1/orders/{id}/confirm:
+    post:
+      tags: [Orders]
+      summary: Confirmar una orden (idempotente)
+      description: |
+        Confirma una orden en estado **CREATED**. Usa `X-Idempotency-Key` para hacer la operación idempotente.
+        Repetir la misma clave devuelve la misma respuesta cacheada.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Orden confirmada o respuesta cacheada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Falta `X-Idempotency-Key` u otro error de validación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Orden no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /V1/orders/{id}/cancel:
+    post:
+      tags: [Orders]
+      summary: Cancelar una orden (solo si está CREATED)
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '204':
+          description: Cancelada
+        '409':
+          description: No se puede cancelar (ya confirmada/cancelada)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  parameters:
+    OrderId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Identificador de la orden
+    IdempotencyKey:
+      in: header
+      name: X-Idempotency-Key
+      required: true
+      schema:
+        type: string
+        minLength: 8
+      description: Clave idempotente por solicitud (por ejemplo, hash/uuid/hex)
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [CREATED, CONFIRMED, CANCELED]
+    OrderItem:
+      type: object
+      required: [id, order_id, product_id, qty, price_cents]
+      properties:
+        id:
+          type: integer
+          example: 1
+        order_id:
+          type: integer
+          example: 1
+        product_id:
+          type: integer
+          example: 3
+        qty:
+          type: integer
+          example: 2
+        price_cents:
+          type: integer
+          example: 25000
+    Order:
+      type: object
+      required: [id, customer_id, status, total_cents, created_at, items]
+      properties:
+        id:
+          type: integer
+          example: 1
+        customer_id:
+          type: integer
+          example: 1
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total_cents:
+          type: integer
+          example: 95000
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-09-05T12:34:56Z"
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+    OrdersPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        nextCursor:
+          type: integer
+          nullable: true
+          description: Cursor para la siguiente página (si existe)
+          example: 10
+    OrderCreateRequest:
+      type: object
+      required: [customer_id, items]
+      properties:
+        customer_id:
+          type: integer
+          example: 1
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [product_id, qty]
+            properties:
+              product_id:
+                type: integer
+                example: 1
+              qty:
+                type: integer
+                minimum: 1
+                example: 2
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Validation error
+        code:
+          type: string
+          example: UNPROCESSABLE
+        details:
+          nullable: true
+          description: Datos adicionales del error
