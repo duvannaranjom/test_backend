@@ -1,5 +1,4 @@
-node_modules/
-
+customers-api/node_modules
 
 # Logs
 logs
