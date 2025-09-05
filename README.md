@@ -1,4 +1,4 @@
-# Prueba Técnica – Node.js + MySQL + Orquestador (Lambda) — **Rutas con `/V1`**
+# Prueba Técnica 
 
 Guía rápida para levantar **Customers API**, **Orders API** y **Lambda Orchestrator**, **usando rutas versionadas `/V1`**.
 
